@@ -17,9 +17,31 @@ jobs:
         run: |
           curl -sSL https://github.com/altstoreio/AltStore/pull/1875.patch | git apply
 
-      - name: Fix AltSign ldid OpenSSL dependency
+      - name: Fix AltSign ldid OpenSSL linker flags
         run: |
-          sed -i '' 's/dependencies: \["ldid-core"\],/dependencies: ["ldid-core", "OpenSSL"],/' Dependencies/AltSign/Package.swift
+          python3 -c '
+          import glob, os
+          p = "Dependencies/AltSign/Package.swift"
+          fw_dir = glob.glob(os.path.abspath("Dependencies/AltSign/Dependencies/OpenSSL/Frameworks/OpenSSL.xcframework/macos-*"))[0]
+          with open(p) as f:
+              s = f.read()
+          old = """            cxxSettings: [
+                          .unsafeFlags(["-w"])
+                      ]
+                  ),"""
+          old = old.replace("\n          ", "\n")
+          new = f"""            cxxSettings: [
+                          .unsafeFlags(["-w"])
+                      ],
+                      linkerSettings: [
+                          .unsafeFlags(["-F", "{fw_dir}"]),
+                          .linkedFramework("OpenSSL")
+                      ]
+                  ),""".replace("\n          ", "\n")
+          assert old in s, "target block not found"
+          with open(p, "w") as f:
+              f.write(s.replace(old, new, 1))
+          '
 
       - name: Install CocoaPods dependencies
         run: pod install
