@@ -19,29 +19,22 @@ jobs:
 
       - name: Fix AltSign ldid OpenSSL linker flags
         run: |
-          python3 -c '
-          import glob, os
+          python3 - << 'EOF'
+          import glob, os, re
           p = "Dependencies/AltSign/Package.swift"
           fw_dir = glob.glob(os.path.abspath("Dependencies/AltSign/Dependencies/OpenSSL/Frameworks/OpenSSL.xcframework/macos-*"))[0]
           with open(p) as f:
               s = f.read()
-          old = """            cxxSettings: [
-                          .unsafeFlags(["-w"])
-                      ]
-                  ),"""
-          old = old.replace("\n          ", "\n")
-          new = f"""            cxxSettings: [
-                          .unsafeFlags(["-w"])
-                      ],
-                      linkerSettings: [
-                          .unsafeFlags(["-F", "{fw_dir}"]),
-                          .linkedFramework("OpenSSL")
-                      ]
-                  ),""".replace("\n          ", "\n")
-          assert old in s, "target block not found"
+          s, n = re.subn(
+              r'(name:\s*"ldid",[\s\S]*?cxxSettings:\s*\[\s*\.unsafeFlags\(\["-w"\]\)\s*\])',
+              lambda m: m.group(1) + f', linkerSettings: [.unsafeFlags(["-F", "{fw_dir}"]), .linkedFramework("OpenSSL")]',
+              s,
+              count=1
+          )
+          assert n == 1, "ldid target not found"
           with open(p, "w") as f:
-              f.write(s.replace(old, new, 1))
-          '
+              f.write(s)
+          EOF
 
       - name: Install CocoaPods dependencies
         run: pod install
