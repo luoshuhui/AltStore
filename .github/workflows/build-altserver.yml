@@ -7,16 +7,6 @@ jobs:
   build:
     runs-on: macos-15-intel
     steps:
-      - name: Select compatible Xcode version
-        run: |
-          ls -d /Applications/Xcode*.app
-          if [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
-          fi
-          xcodebuild -version
-
       - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
@@ -27,8 +17,47 @@ jobs:
         run: |
           curl -sSL https://github.com/altstoreio/AltStore/pull/1875.patch | git apply
 
+      - name: Fix AltSign linker settings
+        run: |
+          python3 - << 'EOF'
+          import glob, os, re
+          p = "Dependencies/AltSign/Package.swift"
+          fw_dir = glob.glob(os.path.abspath("Dependencies/AltSign/Dependencies/OpenSSL/Frameworks/OpenSSL.xcframework/macos-*"))[0]
+          lib_dir = os.path.abspath("build/Build/Products/Release")
+          with open(p) as f:
+              s = f.read()
+          s, n1 = re.subn(
+              r'(name:\s*"ldid",[\s\S]*?cxxSettings:\s*\[\s*\.unsafeFlags\(\["-w"\]\)\s*\])',
+              lambda m: m.group(1) + f', linkerSettings: [.unsafeFlags(["-F", "{fw_dir}"]), .linkedFramework("OpenSSL")]',
+              s,
+              count=1
+          )
+          s, n2 = re.subn(
+              r'(name:\s*"AltSign",[\s\S]*?\.define\("CORECRYPTO_DONOT_USE_TRANSPARENT_UNION=1"\),\s*\])',
+              lambda m: m.group(1) + f', linkerSettings: [.unsafeFlags(["-L", "{lib_dir}"]), .linkedLibrary("corecrypto_static")]',
+              s,
+              count=1
+          )
+          assert n1 == 1 and n2 == 1, f"patch failed: n1={n1}, n2={n2}"
+          with open(p, "w") as f:
+              f.write(s)
+          EOF
+
       - name: Install CocoaPods dependencies
         run: pod install
+
+      - name: Build corecrypto_static
+        run: |
+          xcodebuild -project Dependencies/AltSign/Dependencies/corecrypto/corecrypto.xcodeproj \
+            -target corecrypto_static \
+            -configuration Release \
+            -derivedDataPath build \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
       - name: Build AltServer
         run: |
@@ -36,6 +65,8 @@ jobs:
             -scheme AltServer \
             -configuration Release \
             -derivedDataPath build \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
