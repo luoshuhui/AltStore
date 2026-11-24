@@ -7,6 +7,16 @@ jobs:
   build:
     runs-on: macos-15-intel
     steps:
+      - name: Select compatible Xcode version
+        run: |
+          ls -d /Applications/Xcode*.app
+          if [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          elif [ -d "/Applications/Xcode_16.0.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+          fi
+          xcodebuild -version
+
       - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
@@ -17,25 +27,6 @@ jobs:
         run: |
           curl -sSL https://github.com/altstoreio/AltStore/pull/1875.patch | git apply
 
-      - name: Fix AltSign ldid OpenSSL linker flags
-        run: |
-          python3 - << 'EOF'
-          import glob, os, re
-          p = "Dependencies/AltSign/Package.swift"
-          fw_dir = glob.glob(os.path.abspath("Dependencies/AltSign/Dependencies/OpenSSL/Frameworks/OpenSSL.xcframework/macos-*"))[0]
-          with open(p) as f:
-              s = f.read()
-          s, n = re.subn(
-              r'(name:\s*"ldid",[\s\S]*?cxxSettings:\s*\[\s*\.unsafeFlags\(\["-w"\]\)\s*\])',
-              lambda m: m.group(1) + f', linkerSettings: [.unsafeFlags(["-F", "{fw_dir}"]), .linkedFramework("OpenSSL")]',
-              s,
-              count=1
-          )
-          assert n == 1, "ldid target not found"
-          with open(p, "w") as f:
-              f.write(s)
-          EOF
-
       - name: Install CocoaPods dependencies
         run: pod install
 
@@ -45,8 +36,6 @@ jobs:
             -scheme AltServer \
             -configuration Release \
             -derivedDataPath build \
-            ARCHS="arm64 x86_64" \
-            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
