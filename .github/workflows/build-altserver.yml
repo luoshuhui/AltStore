@@ -51,7 +51,7 @@ jobs:
           xcodebuild -project Dependencies/AltSign/Dependencies/corecrypto/corecrypto.xcodeproj \
             -target corecrypto_static \
             -configuration Release \
-            -derivedDataPath build \
+            CONFIGURATION_BUILD_DIR="$PWD/build/Build/Products/Release" \
             ARCHS="arm64 x86_64" \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_IDENTITY="" \
